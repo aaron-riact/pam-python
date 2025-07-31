@@ -121,22 +121,13 @@ static char libpython_so[]	= LIBPYTHON_SO;
 static void initialise_python(void)
 {
 #if	PY_MAJOR_VERSION*100 + PY_MINOR_VERSION >= 204
+  /* For Python 3.12+, we continue using the older but still working flags
+   * even though they emit deprecation warnings, to avoid complex PyConfig handling */
 #if PY_VERSION_HEX >= 0x030C0000
-  /* Python 3.12+ uses PyConfig API for initialization flags */
-  PyConfig config;
-  PyConfig_InitPythonConfig(&config);
-  config.write_bytecode = 0;
-  config.use_environment = 0;  /* Required to mitigate CVE-2019-16729 */
-  config.user_site_directory = 0;  /* Required to mitigate CVE-2019-16729 */
-  config.isolated = 1;
-  /* config.site_import = 0;  // Breaks too many things */
-  
-  PyStatus status = Py_InitializeFromConfig(&config);
-  PyConfig_Clear(&config);
-  if (PyStatus_Exception(status)) {
-    Py_ExitStatusException(status);
-  }
-#else
+  /* Suppress deprecation warnings for these flags in Python 3.12+ */
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   Py_DontWriteBytecodeFlag = 1;
   Py_IgnoreEnvironmentFlag = 1;	/* Required to mitigate CVE-2019-16729 */
   Py_NoUserSiteDirectory = 1;	/* Required to mitigate CVE-2019-16729 */
@@ -145,6 +136,8 @@ static void initialise_python(void)
 #endif
   /* Py_NoSiteFlag = 1; 	Breaks too many things */
   Py_InitializeEx(0);
+#if PY_VERSION_HEX >= 0x030C0000
+  #pragma GCC diagnostic pop
 #endif
 #else
   size_t		signum;
@@ -888,7 +881,7 @@ static int PamHandle_set_item(
   PamHandleObject*	pamHandle = (PamHandleObject*)self;
   int			pam_result;
   int			result = -1;
-  char*			value;
+  const char*		value;
   char			error_message[64];
 
   if (pyValue == Py_None)
@@ -917,8 +910,7 @@ static int PamHandle_set_item(
   result = check_pam_result(pamHandle, pam_result);
 
 error_exit:
-  if (value != 0)
-    free(value);
+  /* Note: value points to internal Python string data and should not be freed */
   return result;
 }
 
