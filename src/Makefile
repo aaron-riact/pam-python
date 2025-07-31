@@ -38,8 +38,8 @@ test-pam_python.pam: test-pam_python.pam.in Makefile
 
 .PHONY: test
 test: pam_python.so ctest /etc/pam.d/test-pam_python.pam
-	python test.py
-	./ctest python
+	python3 test.py
+	./ctest python3
 
 test-pam_python-installed.pam: test-pam_python.pam.in Makefile
 	sed "s,\\\$$PWD/pam-python.so,pam-python.so,;s,\\\$$PWD,$$(pwd),g" "$@.in" >"$@.tmp" 
@@ -50,5 +50,5 @@ test-pam_python-installed.pam: test-pam_python.pam.in Makefile
 
 .PHONY: installed-test
 installed-test: ctest /etc/pam.d/test-pam_python-installed.pam
-	python test.py
-	./ctest python
+	python3 test.py
+	./ctest python3

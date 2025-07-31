@@ -1,0 +1,17 @@
+# Build artifacts
+src/build/
+src/pam_python.so
+src/ctest
+src/test-pam_python.pam
+src/test.pyc
+*.o
+*.so
+*.pyc
+__pycache__/
+
+# Documentation build
+doc/html/
+
+# Distribution / packaging
+*.egg-info/
+dist/
