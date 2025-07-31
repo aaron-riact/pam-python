@@ -11,13 +11,15 @@ pam_python.so: pam_python.c setup.py Makefile
 	CFLAGS="$(CFLAGS) $(WARNINGS) -I/usr/local/lib/ " ./setup.py build --debug
 	@#CFLAGS="$(CFLAGS) -Og $(WARNINGS)" ./setup.py build --debug
 	@#CFLAGS="$(CFLAGS) -Og $(WARNINGS)" Py_DEBUG=1 ./setup.py build --debug
-	ln -sf build/lib.*/$@ .
+	sofile=$$(ls build/lib.*/*.so | grep -v pam_python.so | head -n1); \
+	ln -sf $$sofile pam_python.so
 
 .PHONY: install install-lib
 install: install-lib
 install-lib:
 	mkdir -p $(DESTDIR)$(LIBDIR)
-	cp build/lib.*/pam_python.so $(DESTDIR)$(LIBDIR)
+	sofile=$(shell ls build/lib.*/*.so | head -n1); \
+	cp $$sofile $(DESTDIR)$(LIBDIR)/pam_python.so
 
 .PHONY: clean
 clean:
