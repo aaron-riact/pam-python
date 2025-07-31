@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # This is the test script for libpython-pam.  There aren't many stones
 # left unturned.
