@@ -102,9 +102,9 @@ typedef int Py_ssize_t;
 #define	Py23_String_Check	PyUnicode_Check
 #define Py23_String_FromString	PyUnicode_FromString
 #define	Py23_String_FromStringAndSize PyUnicode_FromStringAndSize
-#define	Py23_String_GET_SIZE	PyUnicode_GET_SIZE
+#define	Py23_String_GET_SIZE	PyUnicode_GetLength
 #define	Py23_String_Parse_Char	"U"
-#define	Py23_String_Size	PyUnicode_Size
+#define	Py23_String_Size	PyUnicode_GetLength
 #define	Py23_String_Type	PyUnicode_Type
 #define	Py23_TYPE(p)		Py_TYPE(p)
 #endif
@@ -121,6 +121,22 @@ static char libpython_so[]	= LIBPYTHON_SO;
 static void initialise_python(void)
 {
 #if	PY_MAJOR_VERSION*100 + PY_MINOR_VERSION >= 204
+#if PY_VERSION_HEX >= 0x030C0000
+  /* Python 3.12+ uses PyConfig API for initialization flags */
+  PyConfig config;
+  PyConfig_InitPythonConfig(&config);
+  config.write_bytecode = 0;
+  config.use_environment = 0;  /* Required to mitigate CVE-2019-16729 */
+  config.user_site_directory = 0;  /* Required to mitigate CVE-2019-16729 */
+  config.isolated = 1;
+  /* config.site_import = 0;  // Breaks too many things */
+  
+  PyStatus status = Py_InitializeFromConfig(&config);
+  PyConfig_Clear(&config);
+  if (PyStatus_Exception(status)) {
+    Py_ExitStatusException(status);
+  }
+#else
   Py_DontWriteBytecodeFlag = 1;
   Py_IgnoreEnvironmentFlag = 1;	/* Required to mitigate CVE-2019-16729 */
   Py_NoUserSiteDirectory = 1;	/* Required to mitigate CVE-2019-16729 */
@@ -129,6 +145,7 @@ static void initialise_python(void)
 #endif
   /* Py_NoSiteFlag = 1; 	Breaks too many things */
   Py_InitializeEx(0);
+#endif
 #else
   size_t		signum;
   struct sigaction	oldsigaction[NSIG];
@@ -434,9 +451,11 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
    * Just print the exception in some recognisable form, hopefully.
    */
   syslog_open(module_path);
+#if PY_VERSION_HEX < 0x03000000
   if (PyClass_Check(ptype))
     stype = PyObject_GetAttrString(ptype, "__name__");
   else
+#endif
   {
     stype = ptype;
     Py_INCREF(stype);
@@ -578,7 +597,7 @@ static int syslog_path_traceback(
       "OOOOO", ptype, pvalue, ptraceback, Py_None, pamHandle->syslogFile);
   if (args != 0)
   {
-    py_resultobj = PyEval_CallObject(pamHandle->print_exception, args);
+    py_resultobj = PyObject_CallObject(pamHandle->print_exception, args);
     if (py_resultobj != 0)
       SyslogFile_flush(pamHandle->syslogFile);
   }
@@ -2802,7 +2821,7 @@ static int call_python_handler(
   /*
    * Call the Python handler function.
    */
-  py_resultobj = PyEval_CallObject(handler_function, handler_args);
+  py_resultobj = PyObject_CallObject(handler_function, handler_args);
   /*
    * Did it throw an exception?
    */
