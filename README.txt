@@ -16,8 +16,9 @@ Dependencies
 ------------
 
   Python >= 3.6, http://www.python.org
-  pam >= 0.76, http://pam.sourceforge.net/
+  pam >= 0.76 (Ubuntu package libpam0g-dev)
   PyPAM (Debian package python3-pam, needed for testing only)
+  sphinx (pip install sphinx)
 
 
 
