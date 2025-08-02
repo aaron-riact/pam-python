@@ -2221,6 +2221,7 @@ static int	pypam_initialize_count = 0;
 
 static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
 {
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PamHandleObject*	pamHandle = (PamHandleObject*)data;
   void*			dlhandle = pamHandle->dlhandle;
   PyObject*		py_resultobj = 0;
@@ -2251,6 +2252,7 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
       Py_Finalize();
   }
   dlclose(dlhandle);
+  PyGILState_Release(gstate);
 }
 
 /*
@@ -2343,6 +2345,7 @@ static int load_user_module(
   /*
    * If that didn't work there was an exception.  Errk!
    */
+  printf("PY RESULTOBJ %i\n", py_resultobj);
   if (py_resultobj == 0)
   {
     pam_result = syslog_path_traceback(module_path, pamHandle);
@@ -2473,14 +2476,10 @@ static int get_pamHandle(
   PyObject*		tracebackModule = 0;
   int			pam_result;
 
-	  printf("PYTHON XXXXXXXXXXXXXXXXXXXXXXXXXXXX:wnot init, aborting\n");
-  if (!Py_IsInitialized()) {
-	  printf("PYTHON not init, aborting\n");
-	  return 1;
-  }
-  //Py_Initialize();
-  //pamHandle_module = PyModule_New("bobbobobob");
-    //return 0;
+  //if (!Py_IsInitialized()) {
+  //        printf("PYTHON not init, aborting\n");
+  //        return 1;
+  //}
 
   /*
    * Figure out where the module lives.
@@ -2491,16 +2490,10 @@ static int get_pamHandle(
     pam_result = PAM_MODULE_UNKNOWN;
     goto error_exit;
   }
-  printf("\nx\n");
-  //printf(argv[0]);
-  //printf("\nx\n");
   if (argv[0][0] == '/')
     module_dir = "";
   else
     module_dir = DEFAULT_SECURITY_DIR;
-  //printf("\nz\n");
-  //printf(module_dir);
-  //printf("\nz\n");
   module_path = malloc(strlen(module_dir) + strlen(argv[0]) + 1);
   if (module_path == 0)
   {
@@ -2520,9 +2513,6 @@ static int get_pamHandle(
     goto error_exit;
   }
   strcat(strcat(strcpy(module_data_name, MODULE_NAME), "."), module_path);
-  //printf("\n1\n");
-  //printf((char*)module_data_name);
-  //printf("\n1\n");
   pam_result = pam_get_data(pamh, module_data_name, (void*)result);
   if (pam_result == PAM_SUCCESS)
   {
@@ -2530,6 +2520,7 @@ static int get_pamHandle(
     Py_INCREF(*result);
     goto error_exit;
   }
+  printf("10================= %i\n", pam_result);
   /*
    * Initialize Python if required.
    */
@@ -2553,16 +2544,14 @@ static int get_pamHandle(
   /*
    * Create a throw away module because heap types need one, apparently.
    */
-  printf("AAAAA %s\n", (char*)module_data_name);
+  //printf("AAAAA %s\n", (char*)module_data_name);
 //	return 0;
   //goto error_exit;
-  printf("\nPYISINIT  %i\n", Py_IsInitialized());
+  //printf("\nPYISINIT  %i\n", Py_IsInitialized());
   //pamHandle_module = PyModule_New("/home/aaron/development/aaron/pam-python/src/test.py");
   //printf("XXXXXX  %d\n", pamHandle_module);
-  PyGILState_STATE gstate = PyGILState_Ensure();
 
   pamHandle_module = PyModule_New((char*)module_data_name);
-  goto error_exit;
   if (pamHandle_module == 0)
   {
     pam_result = syslog_path_exception(
@@ -2747,7 +2736,9 @@ static int get_pamHandle(
   /*
    * Now we have error reporting set up import the module.
    */
+  printf("11====Loading... %s\n", module_path);
   pam_result = load_user_module(&user_module, pamHandle, module_path);
+  printf("11================= %i\n", pam_result);
   if (pam_result != PAM_SUCCESS)
     goto error_exit;
   pamHandle->module = user_module;
@@ -2771,7 +2762,6 @@ error_exit:
   py_xdecref(pamHandle_module);
   py_xdecref((PyObject*)syslogFile);
   py_xdecref(tracebackModule);
-      PyGILState_Release(gstate);
 
   return pam_result;
 }
@@ -2882,6 +2872,7 @@ static int call_handler(
    * Initialise Python, and get a copy of our object.
    */
   printf("\nHANDLER_NAME %s\n", handler_name);
+  PyGILState_STATE gstate = PyGILState_Ensure();
   pam_result = get_pamHandle(&pamHandle, pamh, argv);
   //return pam_result;
   if (pam_result != PAM_SUCCESS)
@@ -2918,6 +2909,7 @@ error_exit:
   py_xdecref(handler_function);
   py_xdecref((PyObject*)pamHandle);
   py_xdecref(py_resultobj);
+  PyGILState_Release(gstate);
   return pam_result;
 }
 
