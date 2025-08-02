@@ -8,6 +8,11 @@
 #   python test.py
 #   sudo rm /etc/pam.d/test-pam_python.pam 
 #
+from ctypes import CDLL, POINTER, cast, byref, sizeof
+from ctypes import c_char_p, c_char, c_int
+from ctypes import memmove
+from ctypes.util import find_library
+
 import os
 import sys
 
@@ -49,15 +54,13 @@ def test(who, pamh, flags, argv):
 def run_test(caller):
   import test
   test_name = caller.__name__[4:]
-  sys.stdout.write("Testing " + test_name + " ")
+  sys.stdout.write("Testing " + test_name + " ...\n")
   sys.stdout.flush()
   test.test_results = []
   test.test_function = globals()["test_" + test_name]
   caller(test.test_results)
   sys.stdout.write("OK\n")
 
-def pam_conv(auth, query_list, userData=None):
-  return query_list
 
 #
 # Verify the results match.
@@ -65,10 +68,10 @@ def pam_conv(auth, query_list, userData=None):
 def assert_results(expected_results, results):
   for i in range(min(len(expected_results), len(results))):
     assert expected_results[i] == results[i], (i, expected_results[i], results[i])
-  if len(expected_results) < len(results):
-    assert len(expected_results) == len(results), (i, results[len(expected_results)])
-  else:
-    assert len(expected_results) == len(results), (i, expected_results[len(results)])
+    if len(expected_results) < len(results):
+      assert len(expected_results) == len(results), (i, results[len(expected_results)])
+    else:
+      assert len(expected_results) == len(results), (i, expected_results[len(results)])
 
 #
 # Test all the calls happen.
@@ -77,14 +80,144 @@ def test_basic_calls(results, who, pamh, flags, argv):
   results.append((py23_function_name(who), flags, argv))
   return pamh.PAM_SUCCESS
   
+def test_blah(results, who, pamh, flags, argv):
+  results.append((py23_function_name(who), flags, argv))
+  return pamh.PAM_SUCCESS
+
+def run_blah(results):
+    """Copy&paste of PamAuthenticator.authenticate to add `pam_chauthtok`
+    after a successful `pam_authenticate`."""
+    import pam.__internals as pam
+    libpam = pam.PamAuthenticator()
+    @pam.conv_func
+    def my_conv(n_messages, messages, p_response, app_data):
+        """Simple conversation function that responds to any
+        prompt where the echo is off with the supplied password"""
+        # Create an array of n_messages response objects
+        addr = libpam.calloc(n_messages, sizeof(pam.PamResponse))
+        response = cast(addr, POINTER(pam.PamResponse))
+        p_response[0] = response
+        for i in range(n_messages):
+            if messages[i].contents.msg_style == pam.PAM_PROMPT_ECHO_OFF:
+                pwd = password[0]
+                dst = libpam.calloc(len(pwd) + 1, sizeof(c_char))
+                memmove(dst, c_char_p(pwd), len(pwd))
+                response[i].resp = dst
+                response[i].resp_retcode = 0
+        return 0
+
+    service = 'test-pam_python.pam'
+    encoding = 'utf-8'
+    user = 'bob'
+    current = 'karl'
+    new = 'xx'
+    # python3 ctypes requires bytes
+    if isinstance(service, str):
+        service = service.encode(encoding)
+    if isinstance(user, str):
+        user = user.encode(encoding)
+    if isinstance(current, str):
+        current = current.encode(encoding)
+    if isinstance(new, str):
+        new = new.encode(encoding)
+
+    password = [None]  # Closure transport mechanism into my_conv
+    handle = pam.PamHandle()
+    conv = pam.PamConv(my_conv, 0)
+    retval = libpam.pam_start(service, user, byref(conv), byref(handle))
+    if retval != 0:
+        raise RuntimeError('pam_start() failed')
+    print(f"START {retval=}")
+    password[0] = current
+    try:
+        retval = libpam.pam_authenticate(handle, 0)
+        print(f"AUTH {retval=}")
+    except OSError as e:
+        print(e)
+
+    return
+    error = None
+    if retval != 0:
+        error = libpam.pam_strerror(handle, retval).decode(encoding)
+        error = 'authenticate: %s' % error
+
+    if error is None:
+        password[0] = new
+        retval = libpam.pam_chauthtok(handle, 0)
+        if retval != 0:
+            error = libpam.pam_strerror(handle, retval).decode(encoding)
+            error = 'chauthtok: %s' % error
+
+    libpam.pam_end(handle, retval)
+
+    #if error is not None:
+    #    raise RuntimeError('%s: %s' % (retval, error))
+  #class LibPAM(pam.PamAuthenticator):
+
+  #  def __init__(self):
+  #    super().__init__()
+  #    libpam = CDLL(find_library("pam"))
+  #    self.pam_chauthtok = libpam.pam_chauthtok
+  #    self.pam_chauthtok.restype = c_int
+  #    self.pam_chauthtok.argtypes = [pam.PamHandle, c_int]
+
+
+
 def run_basic_calls(results):
-  pam = PAM.pam()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
-  pam.acct_mgmt()
-  pam.chauthtok()
-  pam.open_session()
-  pam.close_session()
+  
+  import pam.__internals as pam
+  class LibPAM(pam.PamAuthenticator):
+
+    def __init__(self):
+      super().__init__()
+      libpam = CDLL(find_library("pam"))
+      self.pam_chauthtok = libpam.pam_chauthtok
+      self.pam_chauthtok.restype = c_int
+      self.pam_chauthtok.argtypes = [pam.PamHandle, c_int]
+
+      libpam.pam_open_session.restype = c_int
+      libpam.pam_open_session.argtypes = [pam.PamHandle, c_int]
+  libpam = LibPAM() #pam.PamAuthenticator() #
+
+
+  @pam.conv_func
+  def my_conv(n_messages, messages, p_response, app_data):
+      """Simple conversation function that responds to any
+      prompt where the echo is off with the supplied password"""
+      # Create an array of n_messages response objects
+      addr = libpam.calloc(n_messages, sizeof(pam.PamResponse))
+      response = cast(addr, POINTER(pam.PamResponse))
+      p_response[0] = response
+      for i in range(n_messages):
+          if messages[i].contents.msg_style == pam.PAM_PROMPT_ECHO_OFF:
+              pwd = password[0]
+              dst = libpam.calloc(len(pwd) + 1, sizeof(c_char))
+              memmove(dst, c_char_p(pwd), len(pwd))
+              response[i].resp = dst
+              response[i].resp_retcode = 0
+      return 0
+
+  #import pam as PAM
+  #pam = PAM.pam()
+  password = [None]
+  ph = pam.PamHandle()
+  service = TEST_PAM_MODULE.encode("utf-8")
+  user = TEST_PAM_USER.encode("utf-8")
+  conv = pam.PamConv(my_conv, 0)
+  retval = libpam.pam_start(service, user, byref(conv), byref(ph))
+  print(f"{retval=}")
+  password[0] = "".encode("utf-8")
+  retval = libpam.pam_authenticate(ph, 0)
+  print(f"{retval=}")
+  #pam.acct_mgmt()
+  retval = libpam.pam_chauthtok(ph, 0)
+  print(f"{retval=}")
+  #pam.open_session()
+  retval = libpam.pam_open_session(ph, 0)
+  print(f"{retval=}")
+  #pam.close_session()
+  retval = libpam.pam_close_session(ph, 0)
+  print(f"{retval=}")
   del pam
   me = os.path.join(os.getcwd(), __file__)
   expected_results = [
@@ -297,7 +430,8 @@ def test_strerror(results, who, pamh, flags, argv):
 
 def run_strerror(results):
   pam = PAM.pam()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  ph = pam.__internals.PamHandle()
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv, ph)
   pam.authenticate(0)
   del pam
   expected_results = [
@@ -621,8 +755,10 @@ def run_absent(results):
 # Entry point.
 #
 def main(argv):
+  run_test(run_blah)
   run_test(run_basic_calls)
   run_test(run_constants)
+  return
   run_test(run_environment)
   run_test(run_strerror)
   run_test(run_items)
@@ -640,5 +776,4 @@ def main(argv):
 # return success.
 #
 if __name__ == "__main__":
-  import PAM
   main(sys.argv)

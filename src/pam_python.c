@@ -2473,6 +2473,15 @@ static int get_pamHandle(
   PyObject*		tracebackModule = 0;
   int			pam_result;
 
+	  printf("PYTHON XXXXXXXXXXXXXXXXXXXXXXXXXXXX:wnot init, aborting\n");
+  if (!Py_IsInitialized()) {
+	  printf("PYTHON not init, aborting\n");
+	  return 1;
+  }
+  //Py_Initialize();
+  //pamHandle_module = PyModule_New("bobbobobob");
+    //return 0;
+
   /*
    * Figure out where the module lives.
    */
@@ -2482,10 +2491,16 @@ static int get_pamHandle(
     pam_result = PAM_MODULE_UNKNOWN;
     goto error_exit;
   }
+  printf("\nx\n");
+  //printf(argv[0]);
+  //printf("\nx\n");
   if (argv[0][0] == '/')
     module_dir = "";
   else
     module_dir = DEFAULT_SECURITY_DIR;
+  //printf("\nz\n");
+  //printf(module_dir);
+  //printf("\nz\n");
   module_path = malloc(strlen(module_dir) + strlen(argv[0]) + 1);
   if (module_path == 0)
   {
@@ -2505,6 +2520,9 @@ static int get_pamHandle(
     goto error_exit;
   }
   strcat(strcat(strcpy(module_data_name, MODULE_NAME), "."), module_path);
+  //printf("\n1\n");
+  //printf((char*)module_data_name);
+  //printf("\n1\n");
   pam_result = pam_get_data(pamh, module_data_name, (void*)result);
   if (pam_result == PAM_SUCCESS)
   {
@@ -2526,14 +2544,25 @@ static int get_pamHandle(
   do_initialize = pypam_initialize_count > 0 || !Py_IsInitialized();
   if (do_initialize)
   {
-    if (pypam_initialize_count == 0)
+    if (pypam_initialize_count == 0) {
       initialise_python();
+      printf("Initialiized!!!!!!!!!!!!!!!!\n");
+    }
     pypam_initialize_count += 1;
   }
   /*
    * Create a throw away module because heap types need one, apparently.
    */
+  printf("AAAAA %s\n", (char*)module_data_name);
+//	return 0;
+  //goto error_exit;
+  printf("\nPYISINIT  %i\n", Py_IsInitialized());
+  //pamHandle_module = PyModule_New("/home/aaron/development/aaron/pam-python/src/test.py");
+  //printf("XXXXXX  %d\n", pamHandle_module);
+  PyGILState_STATE gstate = PyGILState_Ensure();
+
   pamHandle_module = PyModule_New((char*)module_data_name);
+  goto error_exit;
   if (pamHandle_module == 0)
   {
     pam_result = syslog_path_exception(
@@ -2742,6 +2771,8 @@ error_exit:
   py_xdecref(pamHandle_module);
   py_xdecref((PyObject*)syslogFile);
   py_xdecref(tracebackModule);
+      PyGILState_Release(gstate);
+
   return pam_result;
 }
 
@@ -2850,7 +2881,9 @@ static int call_handler(
   /*
    * Initialise Python, and get a copy of our object.
    */
+  printf("\nHANDLER_NAME %s\n", handler_name);
   pam_result = get_pamHandle(&pamHandle, pamh, argv);
+  //return pam_result;
   if (pam_result != PAM_SUCCESS)
     goto error_exit;
   /*
