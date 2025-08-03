@@ -2221,6 +2221,7 @@ static int	pypam_initialize_count = 0;
 
 static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
 {
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PamHandleObject*	pamHandle = (PamHandleObject*)data;
   void*			dlhandle = pamHandle->dlhandle;
   PyObject*		py_resultobj = 0;
@@ -2251,6 +2252,7 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
       Py_Finalize();
   }
   dlclose(dlhandle);
+  PyGILState_Release(gstate);
 }
 
 /*
@@ -2847,6 +2849,7 @@ static int call_handler(
   PyObject*		py_resultobj = 0;
   int			pam_result;
 
+  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * Initialise Python, and get a copy of our object.
    */
@@ -2885,6 +2888,7 @@ error_exit:
   py_xdecref(handler_function);
   py_xdecref((PyObject*)pamHandle);
   py_xdecref(py_resultobj);
+  PyGILState_Release(gstate);
   return pam_result;
 }
 
