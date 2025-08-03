@@ -547,7 +547,7 @@ def run_fail_delay(results):
 # Test raising an exception.
 #
 def test_exceptions(results, who, pamh, flags, argv):
-  if who != pam_sm_end:
+  if who == pam_sm_end:
     return pamh.PAM_SUCCESS
   #
   # Here we have use of a backdoor put into pam_python.c specifically
