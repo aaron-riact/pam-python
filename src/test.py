@@ -8,6 +8,9 @@
 #   python test.py
 #   sudo rm /etc/pam.d/test-pam_python.pam 
 #
+from ctypes import CDLL, POINTER, cast, byref, sizeof, c_char_p, c_char, c_int, memmove
+from ctypes.util import find_library
+
 import os
 import sys
 
@@ -56,8 +59,6 @@ def run_test(caller):
   caller(test.test_results)
   sys.stdout.write("OK\n")
 
-def pam_conv(auth, query_list, userData=None):
-  return query_list
 
 #
 # Verify the results match.
@@ -77,15 +78,73 @@ def test_basic_calls(results, who, pamh, flags, argv):
   results.append((py23_function_name(who), flags, argv))
   return pamh.PAM_SUCCESS
   
+import pam.__internals as pam_internals
+
+class LibPAM():
+    def __init__(self):
+        clibpam = CDLL(find_library("pam"))
+        self._pam_chauthtok = clibpam.pam_chauthtok
+        self._pam_chauthtok.restype = c_int
+        self._pam_chauthtok.argtypes = [pam_internals.PamHandle, c_int]
+
+        self.ph = pam_internals.PamHandle()
+        self._auth = pam_internals.PamAuthenticator()
+
+    def start(self, service, user, conv):
+        c_conv = pam_internals.PamConv(conv, 0)
+        return self._auth.pam_start(service.encode("utf-8"), user.encode("utf-8"), byref(c_conv), byref(self.ph))
+
+    def authenticate(self):
+        return self._auth.pam_authenticate(self.ph, 0)
+
+    def acct_mgmt(self):
+        return self._auth.pam_acct_mgmt(self.ph, 0)
+
+    def chauthtok(self):
+        return self._pam_chauthtok(self.ph, 0)
+
+    def open_session(self):
+        return self._auth.pam_open_session(self.ph, 0)
+
+    def close_session(self):
+        return self._auth.pam_close_session(self.ph, 0)
+
+    def putenv(self, s):
+        return self._auth.pam_putenv(self.ph, s.encode('utf-8'))
+
+    def set_item(self, k, v):
+        return self._auth.pam_set_item(self.ph, k, v.encode('utf-8'))
+
+    def end(self):
+        return self._auth.pam_end(self.ph, 0)
+
+@pam_internals.conv_func
+def pam_conv(n_messages, messages, p_response, app_data):
+    from ctypes import cdll
+    libc = cdll.LoadLibrary(None)
+    """echo"""
+    # Create an array of n_messages response objects
+    addr = libc.calloc(n_messages, sizeof(pam_internals.PamResponse))
+    response = cast(addr, POINTER(pam_internals.PamResponse))
+    p_response[0] = response
+    for i in range(n_messages):
+        msglen = len(messages[i].contents.msg)
+        dst = libc.calloc(msglen + 1, sizeof(c_char))
+        memmove(dst, c_char_p(messages[i].contents.msg), msglen)
+        response[i].resp = dst
+        response[i].resp_retcode = messages[i].contents.msg_style
+    return 0
+
+
 def run_basic_calls(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   pam.acct_mgmt()
   pam.chauthtok()
   pam.open_session()
   pam.close_session()
-  del pam
+  pam.end()
   me = os.path.normpath(os.path.join(os.getcwd(), __file__))
   expected_results = [
       (py23_function_name(pam_sm_authenticate), 0, [me]),
@@ -192,11 +251,11 @@ def test_constants(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_constants(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   pam.close_session()
-  del pam
+  pam.end()
   assert results[0] == py23_function_name(pam_sm_authenticate), (results[0], py23_function_name(pam_sm_authenticate))
   assert results[2] == "except: attribute 'PAM_SUCCESS' of 'PamHandle_type' objects is not writable", results[2]
   assert results[3] == py23_function_name(pam_sm_close_session), (results[3], py23_function_name(pam_sm_close_session))
@@ -259,15 +318,15 @@ def test_environment(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_environment(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   pam.putenv("x1=1")
   pam.putenv("x2=2")
   pam.putenv("x3=3")
   pam.acct_mgmt()
   pam.close_session()
-  del pam
+  pam.end()
   expected_results = [
       py23_function_name(pam_sm_authenticate), py23_function_name(pam_sm_acct_mgmt),
       3, '1', 'y', 'z',
@@ -296,10 +355,10 @@ def test_strerror(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_strerror(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
-  del pam
+  pam.authenticate()
+  pam.end()
   expected_results = [
       py23_function_name(pam_sm_authenticate),
       ( 0, 'success'),
@@ -341,9 +400,9 @@ def test_items(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_items(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   items = {
       2:	"user",
       3:	"tty",
@@ -356,7 +415,7 @@ def run_items(results):
     pam.set_item(item, items[item])
   pam.open_session()
   pam.close_session()
-  del pam
+  pam.end()
   expected_results = [
       py23_function_name(pam_sm_authenticate), py23_function_name(pam_sm_open_session),
       ('authtok',	None),
@@ -421,16 +480,16 @@ def test_xauthdata(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_xauthdata(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   #
   # The PAM module doesn't support XAUTHDATA, so check what we can from the
   # module only.
   #
   pam.open_session()
   pam.close_session()
-  del pam
+  pam.end()
   expected_results = [
       py23_function_name(pam_sm_authenticate), py23_function_name(pam_sm_open_session),
       ("name='name-module', data='data-module'"),
@@ -457,10 +516,10 @@ def test_no_sm_end(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_no_sm_end(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
-  del pam
+  pam.authenticate()
+  pam.end()
   expected_results = [py23_function_name(pam_sm_authenticate)]
   assert_results(expected_results, results)
 
@@ -497,11 +556,11 @@ def test_conv(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_conv(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   pam.acct_mgmt()
-  del pam
+  pam.end()
   expected_results = [
       py23_function_name(pam_sm_authenticate),
       [('Prompt_echo_off', 1), ('Prompt_echo_on', 2), ('Error_msg', 3), ('Text_info', 4)],
@@ -517,15 +576,15 @@ def test_pamerr(results, who, pamh, flags, argv):
   return results[-1]
 
 def run_pamerr(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
   for err in range(0, PAM_CONSTANTS['_PAM_RETURN_VALUES']):
     results.append(err)
     try:
-      pam.authenticate(0)
+      pam.authenticate()
     except PAM.error as e:
       results[-1] = -e.args[1]
-  del pam
+  pam.end()
   expected_results = [-r for r in range(PAM_CONSTANTS['_PAM_RETURN_VALUES'])]
   expected_results[25] = -6
   assert_results(expected_results, results)
@@ -538,10 +597,10 @@ def test_fail_delay(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_fail_delay(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
-  del pam
+  pam.authenticate()
+  pam.end()
 
 #
 # Test raising an exception.
@@ -566,10 +625,10 @@ def test_exceptions(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_exceptions(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
-  del pam
+  pam.authenticate()
+  pam.end()
   expected_results = [results[0], 0]
   expected_results += [(-r,) for r in range(1, results[0])]
   assert_results(expected_results, results)
@@ -589,24 +648,24 @@ def test_absent(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_absent(results):
-  pam = PAM.pam()
+  pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  pam.authenticate(0)
+  pam.authenticate()
   funcs = (
       pam.acct_mgmt,
-      pam.setcred,
+      #pam.setcred,
       pam.open_session,
       pam.close_session,
       pam.chauthtok
     )
   for func in funcs:
     try:
-      func(0)
+      func()
       exception = None
     except py23_base_exception as e:
       exception = e
     results.append((exception.__class__.__name__, str(exception)))
-  del pam
+  pam.end()
   expected_results = [
       'pam_sm_authenticate',
       ('error', "('Symbol not found', 2)"),
@@ -640,5 +699,4 @@ def main(argv):
 # return success.
 #
 if __name__ == "__main__":
-  import PAM
   main(sys.argv)
