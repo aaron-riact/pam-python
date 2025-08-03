@@ -86,7 +86,7 @@ def run_basic_calls(results):
   pam.open_session()
   pam.close_session()
   del pam
-  me = os.path.join(os.getcwd(), __file__)
+  me = os.path.normpath(os.path.join(os.getcwd(), __file__))
   expected_results = [
       (py23_function_name(pam_sm_authenticate), 0, [me]),
       (py23_function_name(pam_sm_acct_mgmt), 0, [me, 'arg1', 'arg2']),
@@ -434,14 +434,14 @@ def run_xauthdata(results):
   expected_results = [
       py23_function_name(pam_sm_authenticate), py23_function_name(pam_sm_open_session),
       ("name='name-module', data='data-module'"),
-      'except: XAuthData() argument 1 must be string, not None',
-      'except: XAuthData() argument 2 must be string, not int',
+      'except: XAuthData() argument 1 must be str, not None',
+      'except: XAuthData() argument 2 must be str, not int',
       ("name='name-XA', data='data-XA'"),
       ("name='name-xa', data='data-xa'"),
       py23_function_name(pam_sm_close_session),
       ("name='name-module', data='data-module'"),
-      'except: XAuthData() argument 1 must be string, not None',
-      'except: XAuthData() argument 2 must be string, not int',
+      'except: XAuthData() argument 1 must be str, not None',
+      'except: XAuthData() argument 2 must be str, not int',
       ("name='name-XA', data='data-XA'"),
       ("name='name-xa', data='data-xa'"),
       py23_function_name(pam_sm_end)]
@@ -519,14 +519,14 @@ def test_pamerr(results, who, pamh, flags, argv):
 def run_pamerr(results):
   pam = PAM.pam()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
-  for err in range(0, PAM._PAM_RETURN_VALUES):
+  for err in range(0, PAM_CONSTANTS['_PAM_RETURN_VALUES']):
     results.append(err)
     try:
       pam.authenticate(0)
     except PAM.error as e:
       results[-1] = -e.args[1]
   del pam
-  expected_results = [-r for r in range(PAM._PAM_RETURN_VALUES)]
+  expected_results = [-r for r in range(PAM_CONSTANTS['_PAM_RETURN_VALUES'])]
   expected_results[25] = -6
   assert_results(expected_results, results)
 
