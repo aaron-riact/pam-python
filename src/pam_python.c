@@ -79,21 +79,6 @@ typedef int Py_ssize_t;
 /*
  * Python2 / Python3 compatibily macros.
  */
-#if PY_VERSION_HEX < 0x03000000
-#define	Py23_ExceptionBase	PyExc_StandardError
-#define	Py23_Int_AsLong		PyInt_AsLong
-#define	Py23_Int_Check		PyInt_Check
-#define Py23_Int_FromLong	PyInt_FromLong
-#define	Py23_String_AsString	PyString_AsString
-#define	Py23_String_Check	PyString_Check
-#define Py23_String_FromString	PyString_FromString
-#define	Py23_String_FromStringAndSize PyString_FromStringAndSize
-#define	Py23_String_GET_SIZE	PyString_GET_SIZE
-#define	Py23_String_Parse_Char	"S"
-#define	Py23_String_Size	PyString_Size
-#define	Py23_String_Type	PyString_Type
-#define	Py23_TYPE(p)		((p)->ob_type)
-#else
 #define	Py23_ExceptionBase	PyExc_Exception
 #define	Py23_Int_AsLong		PyLong_AsLong
 #define	Py23_Int_Check		PyLong_Check
@@ -107,7 +92,6 @@ typedef int Py_ssize_t;
 #define	Py23_String_Size	PyUnicode_GetLength
 #define	Py23_String_Type	PyUnicode_Type
 #define	Py23_TYPE(p)		Py_TYPE(p)
-#endif
 #define	Py23_Stringify(x)	#x
 
 /*
@@ -131,9 +115,7 @@ static void initialise_python(void)
   Py_DontWriteBytecodeFlag = 1;
   Py_IgnoreEnvironmentFlag = 1;	/* Required to mitigate CVE-2019-16729 */
   Py_NoUserSiteDirectory = 1;	/* Required to mitigate CVE-2019-16729 */
-#if PY_VERSION_HEX >= 0x03000000
   Py_IsolatedFlag = 1;
-#endif
   /* Py_NoSiteFlag = 1; 	Breaks too many things */
   Py_InitializeEx(0);
 #if PY_VERSION_HEX >= 0x030C0000
@@ -408,18 +390,12 @@ static int syslog_python2pam(PyObject* exception_type)
  */
 static char* alloc_module_path(PamHandleObject* pamHandle)
 {
-#if PY_VERSION_HEX < 0x03000000
-  char* result = PyModule_GetFilename(pamHandle->module);
-  if (result != 0)
-    return strdup(result);
-#else
   PyObject* tmp = PyModule_GetFilenameObject(pamHandle->module);
   if (tmp != 0) {
     char* result = strdup(Py23_String_AsString(tmp));
     Py_DECREF(tmp);
     return result;
   }
-#endif
   return strdup(MODULE_NAME);
 }
 
@@ -444,11 +420,6 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
    * Just print the exception in some recognisable form, hopefully.
    */
   syslog_open(module_path);
-#if PY_VERSION_HEX < 0x03000000
-  if (PyClass_Check(ptype))
-    stype = PyObject_GetAttrString(ptype, "__name__");
-  else
-#endif
   {
     stype = ptype;
     Py_INCREF(stype);
