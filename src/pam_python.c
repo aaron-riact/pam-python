@@ -79,33 +79,20 @@ static char libpython_so[]	= LIBPYTHON_SO;
  */
 static void initialise_python(void)
 {
-#if	PY_MAJOR_VERSION*100 + PY_MINOR_VERSION >= 204
-  /* For Python 3.12+, we continue using the older but still working flags
-   * even though they emit deprecation warnings, to avoid complex PyConfig handling */
-#if PY_VERSION_HEX >= 0x030C0000
-  /* Suppress deprecation warnings for these flags in Python 3.12+ */
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  Py_DontWriteBytecodeFlag = 1;
-  Py_IgnoreEnvironmentFlag = 1;	/* Required to mitigate CVE-2019-16729 */
-  Py_NoUserSiteDirectory = 1;	/* Required to mitigate CVE-2019-16729 */
-  Py_IsolatedFlag = 1;
-  /* Py_NoSiteFlag = 1; 	Breaks too many things */
-  Py_InitializeEx(0);
-#if PY_VERSION_HEX >= 0x030C0000
-  #pragma GCC diagnostic pop
-#endif
-#else
-  size_t		signum;
-  struct sigaction	oldsigaction[NSIG];
+  PyConfig config;
+  PyConfig_InitIsolatedConfig(&config);
 
-  for (signum = 0; signum < arr_size(oldsigaction); signum += 1)
-    sigaction(signum, 0, &oldsigaction[signum]);
-  Py_Initialize();
-  for (signum = 0; signum < arr_size(oldsigaction); signum += 1)
-    sigaction(signum, &oldsigaction[signum], 0);
-#endif
+  config.write_bytecode = 0;
+  config.use_environment = 0;
+  config.user_site_directory = 0;
+  config.isolated = 1;
+  // config.site_import = 1; // Do not set this to 0, breaks too many things
+
+  PyStatus status = Py_InitializeFromConfig(&config);
+  PyConfig_Clear(&config);
+  if (PyStatus_Exception(status)) {
+      Py_ExitStatusException(status);
+  }
 }
 
 /*
