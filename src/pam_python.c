@@ -2245,6 +2245,7 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
   py_xdecref(handler_function);
   py_initialized = pamHandle->py_initialized;
   Py_DECREF(pamHandle);
+  PyGILState_Release(gstate);
   if (py_initialized)
   {
     pypam_initialize_count -= 1;
@@ -2252,7 +2253,6 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
       Py_Finalize();
   }
   dlclose(dlhandle);
-  PyGILState_Release(gstate);
 }
 
 /*
@@ -2482,7 +2482,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "python module name not supplied");
     pam_result = PAM_MODULE_UNKNOWN;
-    goto error_exit;
+    goto no_lock_exit;
   }
   if (argv[0][0] == '/')
     module_dir = "";
@@ -2493,7 +2493,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "out of memory");
     pam_result = PAM_BUF_ERR;
-    goto error_exit;
+    goto no_lock_exit;
   }
   strcat(strcpy(module_path, module_dir), argv[0]);
   /*
@@ -2504,7 +2504,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "out of memory");
     pam_result = PAM_BUF_ERR;
-    goto error_exit;
+    goto no_lock_exit;
   }
   strcat(strcat(strcpy(module_data_name, MODULE_NAME), "."), module_path);
   pam_result = pam_get_data(pamh, module_data_name, (void*)result);
@@ -2512,7 +2512,7 @@ static int get_pamHandle(
   {
     (*result)->pamh = pamh;
     Py_INCREF(*result);
-    goto error_exit;
+    goto no_lock_exit;
   }
   /*
    * Initialize Python if required.
@@ -2523,7 +2523,7 @@ static int get_pamHandle(
     pam_result = syslog_path_message(
         module_path,
 	"Can't load python library %s: %s", libpython_so, dlerror());
-    goto error_exit;
+    goto no_lock_exit;
   }
   do_initialize = pypam_initialize_count > 0 || !Py_IsInitialized();
   if (do_initialize)
@@ -2532,6 +2532,7 @@ static int get_pamHandle(
       initialise_python();
     pypam_initialize_count += 1;
   }
+  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * Create a throw away module because heap types need one, apparently.
    */
@@ -2734,6 +2735,8 @@ static int get_pamHandle(
   pamHandle = 0;
 
 error_exit:
+  PyGILState_Release(gstate);
+no_lock_exit:
   if (module_path != 0)
     free(module_path);
   if (module_data_name != 0)
@@ -2849,13 +2852,13 @@ static int call_handler(
   PyObject*		py_resultobj = 0;
   int			pam_result;
 
-  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * Initialise Python, and get a copy of our object.
    */
   pam_result = get_pamHandle(&pamHandle, pamh, argv);
   if (pam_result != PAM_SUCCESS)
-    goto error_exit;
+    goto no_lock_exit;
+  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * See if the function we have to call has been defined.
    */
@@ -2883,12 +2886,12 @@ static int call_handler(
     goto error_exit;
   }
   pam_result = Py23_Int_AsLong(py_resultobj);
-
 error_exit:
+  PyGILState_Release(gstate);
+no_lock_exit:
   py_xdecref(handler_function);
   py_xdecref((PyObject*)pamHandle);
   py_xdecref(py_resultobj);
-  PyGILState_Release(gstate);
   return pam_result;
 }
 
