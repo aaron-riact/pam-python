@@ -70,13 +70,6 @@ const char libpam_python_date[]		= "2014-05-05";
 #define	PyCFunctionKwds_cast	(PyCFunction)(Py_ssize_t)
 
 /*
- * Add typedef for Py_ssize_t if it you have an older python.
- */
-#if (PY_VERSION_HEX < 0x02050000)
-typedef int Py_ssize_t;
-#endif
-
-/*
  * The python interpreter's shared library.
  */
 static char libpython_so[]	= LIBPYTHON_SO;
