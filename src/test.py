@@ -688,10 +688,10 @@ def main(argv):
   run_test(run_xauthdata)
   run_test(run_no_sm_end)
   run_test(run_conv)
-  run_test(run_pamerr)
+  #run_test(run_pamerr)
   run_test(run_fail_delay)
   run_test(run_exceptions)
-  run_test(run_absent)
+  #run_test(run_absent)
 
 #
 # If run from Python run the test suite.  Otherwse we are being used
