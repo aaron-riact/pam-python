@@ -410,7 +410,6 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
   PyObject*	ptraceback = 0;
   PyObject*	pvalue = 0;
   int		pam_result = 0;
-  PyObject*	stype = 0;
   const char*	str_name = 0;
   const char*	str_message = 0;
 
@@ -420,13 +419,10 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
    * Just print the exception in some recognisable form, hopefully.
    */
   syslog_open(module_path);
+  if (ptype != 0)
   {
-    stype = ptype;
-    Py_INCREF(stype);
-  }
-  if (stype != 0)
-  {
-    name = PyObject_Str(stype);
+    Py_INCREF(ptype);
+    name = PyObject_Str(ptype);
     if (name != 0)
       str_name = Py23_String_AsString(name);
   }
@@ -460,7 +456,6 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
   py_xdecref(ptraceback);
   py_xdecref(ptype);
   py_xdecref(pvalue);
-  py_xdecref(stype);
   syslog_close();
   return pam_result;
 }
