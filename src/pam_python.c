@@ -109,14 +109,6 @@ static void initialise_python(void)
 }
 
 /*
- * The Py_XDECREF macro gives warnings.  This function doesn't.
- */
-static void py_xdecref(PyObject* object)
-{
-  Py_XDECREF(object);
-}
-
-/*
  * Generic traverse function for heap objects.
  */
 static int generic_traverse(PyObject* self, visitproc visitor, void* arg)
@@ -426,11 +418,11 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
   else if (str_message != 0)
     syslog(LOG_AUTHPRIV|LOG_ERR, "%s", str_message);
   pam_result = syslog_python2pam(ptype);
-  py_xdecref(message);
-  py_xdecref(name);
-  py_xdecref(ptraceback);
-  py_xdecref(ptype);
-  py_xdecref(pvalue);
+  Py_XDECREF(message);
+  Py_XDECREF(name);
+  Py_XDECREF(ptraceback);
+  Py_XDECREF(ptype);
+  Py_XDECREF(pvalue);
   syslog_close();
   return pam_result;
 }
@@ -536,11 +528,11 @@ static int syslog_path_traceback(
       SyslogFile_flush(pamHandle->syslogFile);
   }
   pam_result = syslog_python2pam(ptype);
-  py_xdecref(args);
-  py_xdecref(ptraceback);
-  py_xdecref(ptype);
-  py_xdecref(pvalue);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(args);
+  Py_XDECREF(ptraceback);
+  Py_XDECREF(ptype);
+  Py_XDECREF(pvalue);
+  Py_XDECREF(py_resultobj);
   syslog_close();
   return pam_result;
 }
@@ -620,7 +612,7 @@ static PyObject* PamMessage_new(
   pamMessage = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamMessage);
+  Py_XDECREF((PyObject*)pamMessage);
   return self;
 }
 
@@ -692,7 +684,7 @@ static PyObject* PamResponse_new(
   pamResponse = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamResponse);
+  Py_XDECREF((PyObject*)pamResponse);
   return self;
 }
 
@@ -759,7 +751,7 @@ static PyObject* PamXAuthData_new(
   pamXAuthData = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamXAuthData);
+  Py_XDECREF((PyObject*)pamXAuthData);
   return self;
 }
 
@@ -786,7 +778,7 @@ static int check_pam_result(PamHandleObject* pamHandle, int pam_result)
     if (error_code != NULL)
       PyObject_SetAttrString(pvalue, "pam_result", error_code);
     PyErr_Restore(ptype, pvalue, ptraceback);
-    py_xdecref(error_code);
+    Py_XDECREF(error_code);
   }
   return -1;
 }
@@ -922,7 +914,7 @@ static PyObject* PamEnvIter_create(
   Py_INCREF(result);
 
 error_exit:
-  py_xdecref((PyObject*)pamEnvIter);
+  Py_XDECREF((PyObject*)pamEnvIter);
   return result;
 }
 
@@ -1011,9 +1003,9 @@ static PyObject* PamEnvIter_item_entry(const char* entry)
   tuple = 0;
 
 error_exit:
-  py_xdecref(key);
-  py_xdecref(tuple);
-  py_xdecref(value);
+  Py_XDECREF(key);
+  Py_XDECREF(tuple);
+  Py_XDECREF(value);
   return result;
 }
 
@@ -1273,8 +1265,8 @@ static PyObject* PamEnv_as_sequence(
   list = 0;
 
 error_exit:
-  py_xdecref(list);
-  py_xdecref(entry);
+  Py_XDECREF(list);
+  Py_XDECREF(entry);
   return result;
 }
 
@@ -1556,7 +1548,7 @@ static PyObject* PamHandle_get_XAUTHDATA(PyObject* self, void* closure)
   }
 
 error_exit:
-  py_xdecref(newargs);
+  Py_XDECREF(newargs);
   return result;
 }
 
@@ -1626,8 +1618,8 @@ static int PamHandle_set_XAUTHDATA(
   result = check_pam_result(pamHandle, pam_result);
 
 error_exit:
-  py_xdecref(data);
-  py_xdecref(name);
+  Py_XDECREF(data);
+  Py_XDECREF(name);
   if (xauth_data.name != 0)
     free(xauth_data.name);
   if (xauth_data.data != 0)
@@ -1792,8 +1784,8 @@ static int PamHandle_conversation_2message(
   result = 0;
 
 error_exit:
-  py_xdecref(msg);
-  py_xdecref(msg_style);
+  Py_XDECREF(msg);
+  Py_XDECREF(msg_style);
   return result;
 }
 
@@ -1814,7 +1806,7 @@ static PyObject* PamHandle_conversation_2response(
     goto error_exit;
 
 error_exit:
-  py_xdecref(newargs);
+  Py_XDECREF(newargs);
   return result;
 }
 
@@ -1922,8 +1914,8 @@ static PyObject* PamHandle_conversation(
   }
 
 error_exit:
-  py_xdecref(response);
-  py_xdecref(result_tuple);
+  Py_XDECREF(response);
+  Py_XDECREF(result_tuple);
   PyMem_Free(message_array);
   PyMem_Free(message_vector);
   if (response_array != 0)
@@ -2182,8 +2174,8 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
         &py_resultobj, pamHandle, handler_function,
 	handler_name, 0, 0, 0);
   }
-  py_xdecref(py_resultobj);
-  py_xdecref(handler_function);
+  Py_XDECREF(py_resultobj);
+  Py_XDECREF(handler_function);
   py_initialized = pamHandle->py_initialized;
   Py_DECREF(pamHandle);
   PyGILState_Release(gstate);
@@ -2294,13 +2286,13 @@ static int load_user_module(
   pam_result = PAM_SUCCESS;
 
 error_exit:
-  py_xdecref(builtins);
-  py_xdecref(module_dict);
+  Py_XDECREF(builtins);
+  Py_XDECREF(module_dict);
   if (module_fp != 0)
     fclose(module_fp);
   if (user_module_name != 0)
     free(user_module_name);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
@@ -2364,8 +2356,8 @@ static PyTypeObject* newHeapType(
   type = 0;
 
 error_exit:
-  py_xdecref(pyName);
-  py_xdecref((PyObject*)type);
+  Py_XDECREF(pyName);
+  Py_XDECREF((PyObject*)type);
   return result;
 }
 
@@ -2391,7 +2383,7 @@ static PyObject* newSingletonObject(
       module, name, basicsize, doc, clear, methods, members, getset, 0);
   if (type != 0)
     result = type->tp_alloc(type, 0);
-  py_xdecref((PyObject*)type);
+  Py_XDECREF((PyObject*)type);
   return result;
 }
 
@@ -2682,12 +2674,12 @@ no_lock_exit:
     free(module_path);
   if (module_data_name != 0)
     free(module_data_name);
-  py_xdecref(user_module);
-  py_xdecref((PyObject*)pamEnv);
-  py_xdecref((PyObject*)pamHandle);
-  py_xdecref(pamHandle_module);
-  py_xdecref((PyObject*)syslogFile);
-  py_xdecref(tracebackModule);
+  Py_XDECREF(user_module);
+  Py_XDECREF((PyObject*)pamEnv);
+  Py_XDECREF((PyObject*)pamHandle);
+  Py_XDECREF(pamHandle_module);
+  Py_XDECREF((PyObject*)syslogFile);
+  Py_XDECREF(tracebackModule);
   return pam_result;
 }
 
@@ -2773,11 +2765,11 @@ static int call_python_handler(
   pam_result = PAM_SUCCESS;
 
 error_exit:
-  py_xdecref(arg_object);
-  py_xdecref(argv_object);
-  py_xdecref(flags_object);
-  py_xdecref(handler_args);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(arg_object);
+  Py_XDECREF(argv_object);
+  Py_XDECREF(flags_object);
+  Py_XDECREF(handler_args);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
@@ -2830,9 +2822,9 @@ static int call_handler(
 error_exit:
   PyGILState_Release(gstate);
 no_lock_exit:
-  py_xdecref(handler_function);
-  py_xdecref((PyObject*)pamHandle);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(handler_function);
+  Py_XDECREF((PyObject*)pamHandle);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
