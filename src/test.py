@@ -580,10 +580,7 @@ def run_pamerr(results):
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
   for err in range(0, PAM_CONSTANTS['_PAM_RETURN_VALUES']):
     results.append(err)
-    try:
-      pam.authenticate()
-    except PAM.error as e:
-      results[-1] = -e.args[1]
+    results[-1] = -pam.authenticate()
   pam.end()
   expected_results = [-r for r in range(PAM_CONSTANTS['_PAM_RETURN_VALUES'])]
   expected_results[25] = -6
@@ -688,7 +685,7 @@ def main(argv):
   run_test(run_xauthdata)
   run_test(run_no_sm_end)
   run_test(run_conv)
-  #run_test(run_pamerr)
+  run_test(run_pamerr)
   run_test(run_fail_delay)
   run_test(run_exceptions)
   #run_test(run_absent)
