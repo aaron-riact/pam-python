@@ -90,8 +90,8 @@ class LibPAM(pam_internals.PamAuthenticator):
 
         self.ph = pam_internals.PamHandle()
 
-    def start(self, service, user, conv):
-        c_conv = pam_internals.PamConv(conv, 0)
+    def start(self, service, user):
+        c_conv = pam_internals.PamConv(pam_conv, 0)
         return self.pam_start(service.encode("utf-8"), user.encode("utf-8"), byref(c_conv), byref(self.ph))
 
     def authenticate(self):
@@ -138,7 +138,7 @@ def pam_conv(n_messages, messages, p_response, app_data):
 
 def run_basic_calls(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.acct_mgmt()
   pam.chauthtok()
@@ -252,7 +252,7 @@ def test_constants(results, who, pamh, flags, argv):
 
 def run_constants(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.close_session()
   pam.end()
@@ -319,7 +319,7 @@ def test_environment(results, who, pamh, flags, argv):
 
 def run_environment(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.putenv("x1=1")
   pam.putenv("x2=2")
@@ -356,7 +356,7 @@ def test_strerror(results, who, pamh, flags, argv):
 
 def run_strerror(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.end()
   expected_results = [
@@ -401,7 +401,7 @@ def test_items(results, who, pamh, flags, argv):
 
 def run_items(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   items = {
       2:	"user",
@@ -481,7 +481,7 @@ def test_xauthdata(results, who, pamh, flags, argv):
 
 def run_xauthdata(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   #
   # The PAM module doesn't support XAUTHDATA, so check what we can from the
@@ -517,7 +517,7 @@ def test_no_sm_end(results, who, pamh, flags, argv):
 
 def run_no_sm_end(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.end()
   expected_results = [py23_function_name(pam_sm_authenticate)]
@@ -557,7 +557,7 @@ def test_conv(results, who, pamh, flags, argv):
 
 def run_conv(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.acct_mgmt()
   pam.end()
@@ -577,7 +577,7 @@ def test_pamerr(results, who, pamh, flags, argv):
 
 def run_pamerr(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   for err in range(0, PAM_CONSTANTS['_PAM_RETURN_VALUES']):
     results.append(err)
     results[-1] = -pam.authenticate()
@@ -595,7 +595,7 @@ def test_fail_delay(results, who, pamh, flags, argv):
 
 def run_fail_delay(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.end()
 
@@ -623,7 +623,7 @@ def test_exceptions(results, who, pamh, flags, argv):
 
 def run_exceptions(results):
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   pam.end()
   expected_results = [results[0], 0]
@@ -647,7 +647,7 @@ def test_absent(results, who, pamh, flags, argv):
 def run_absent(results):
   import re
   pam = LibPAM()
-  pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
+  pam.start(TEST_PAM_MODULE, TEST_PAM_USER)
   pam.authenticate()
   funcs = (
       pam.acct_mgmt,
