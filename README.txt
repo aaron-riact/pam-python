@@ -15,9 +15,9 @@ pam_python
 Dependencies
 ------------
 
-  Python >= 2.6, http://www.python.org
+  Python >= 3.6, http://www.python.org
   pam >= 0.76, http://pam.sourceforge.net/
-  PyPAM (Debian package python-pam, needed for testing only)
+  python-pam (Ubuntu package python3-pam, needed for testing only)
 
 
 
@@ -25,7 +25,7 @@ Building and Installing
 -----------------------
 
   The build dependencies are:
-    - Python2 development system, http://www.python.org
+    - Python3 development system, http://www.python.org
     - A POSIX system (make, unix shell, sed, etc).
     - The PAM development libraries,
       http://pam.sourceforge.net
@@ -33,7 +33,7 @@ Building and Installing
   In addition the unit test requires:
     - sudo, http://www.sudo.ws/
     - An account with root privileges.
-    - PyPAM (for testing only)
+    - python-pam (Ubuntu python3-pam package for testing only)
 
   To build the re-distributable, in the directory containing
   this file run:

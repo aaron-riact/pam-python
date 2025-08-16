@@ -1,4 +1,4 @@
-#!/usr/bin/python2 -W default
+#!/usr/bin/python3
 #
 # This is the test script for libpython-pam.  There aren't many stones
 # left unturned.
@@ -8,20 +8,14 @@
 #   python test.py
 #   sudo rm /etc/pam.d/test-pam_python.pam 
 #
-import warnings; warnings.simplefilter('default')
 import os
 import sys
 
-if sys.hexversion < 0x03000000:
-  py23_base_exception = Exception
-  py23_standard_exception = StandardError
-  def py23_function_name(func):
-    return func.func_name
-else:
-  py23_base_exception = BaseException
-  py23_standard_exception = Exception
-  def py23_function_name(func):
-    return func.__name__
+# Python 3 only - simplify compatibility code
+py23_base_exception = BaseException
+py23_standard_exception = Exception
+def py23_function_name(func):
+  return func.__name__
 
 
 TEST_PAM_MODULE	= "test-pam_python.pam"
