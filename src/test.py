@@ -80,43 +80,43 @@ def test_basic_calls(results, who, pamh, flags, argv):
   
 import pam.__internals as pam_internals
 
-class LibPAM():
+class LibPAM(pam_internals.PamAuthenticator):
     def __init__(self):
+        super().__init__()
         clibpam = CDLL(find_library("pam"))
         self._pam_chauthtok = clibpam.pam_chauthtok
         self._pam_chauthtok.restype = c_int
         self._pam_chauthtok.argtypes = [pam_internals.PamHandle, c_int]
 
         self.ph = pam_internals.PamHandle()
-        self._auth = pam_internals.PamAuthenticator()
 
     def start(self, service, user, conv):
         c_conv = pam_internals.PamConv(conv, 0)
-        return self._auth.pam_start(service.encode("utf-8"), user.encode("utf-8"), byref(c_conv), byref(self.ph))
+        return self.pam_start(service.encode("utf-8"), user.encode("utf-8"), byref(c_conv), byref(self.ph))
 
     def authenticate(self):
-        return self._auth.pam_authenticate(self.ph, 0)
+        return self.pam_authenticate(self.ph, 0)
 
     def acct_mgmt(self):
-        return self._auth.pam_acct_mgmt(self.ph, 0)
+        return self.pam_acct_mgmt(self.ph, 0)
 
     def chauthtok(self):
         return self._pam_chauthtok(self.ph, 0)
 
     def open_session(self):
-        return self._auth.pam_open_session(self.ph, 0)
+        return self.pam_open_session(self.ph, 0)
 
     def close_session(self):
-        return self._auth.pam_close_session(self.ph, 0)
+        return self.pam_close_session(self.ph, 0)
 
     def putenv(self, s):
-        return self._auth.pam_putenv(self.ph, s.encode('utf-8'))
+        return self.pam_putenv(self.ph, s.encode('utf-8'))
 
     def set_item(self, k, v):
-        return self._auth.pam_set_item(self.ph, k, v.encode('utf-8'))
+        return self.pam_set_item(self.ph, k, v.encode('utf-8'))
 
     def end(self):
-        return self._auth.pam_end(self.ph, 0)
+        return self.pam_end(self.ph, 0)
 
 @pam_internals.conv_func
 def pam_conv(n_messages, messages, p_response, app_data):
