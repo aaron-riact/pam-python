@@ -61,8 +61,8 @@ Python PAM modules
 ==================
 
 When a PAM handle created by the applications call to PAM's :samp:`pam_start()`
-function first uses a Python PAM module, |pam_python| invokes it using Python's
-``execfile`` function.   The following variables are passed to the invoked
+function first uses a Python PAM module, |pam_python| loads and executes it
+using Python's C API.   The following variables are passed to the invoked
 module in its global namespace:
 
 

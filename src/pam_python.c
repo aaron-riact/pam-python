@@ -54,7 +54,7 @@
 #ifdef __APPLE__
 #define DEFAULT_SECURITY_DIR	"/usr/lib/pam/"
 #else
-#define	DEFAULT_SECURITY_DIR	"/lib/security/"
+#define	DEFAULT_SECURITY_DIR	"/lib/x86_64-linux-gnu/security"
 #endif
 #endif
 
@@ -70,47 +70,6 @@ const char libpam_python_date[]		= "2014-05-05";
 #define	PyCFunctionKwds_cast	(PyCFunction)(Py_ssize_t)
 
 /*
- * Add typedef for Py_ssize_t if it you have an older python.
- */
-#if (PY_VERSION_HEX < 0x02050000)
-typedef int Py_ssize_t;
-#endif
-
-/*
- * Python2 / Python3 compatibily macros.
- */
-#if PY_VERSION_HEX < 0x03000000
-#define	Py23_ExceptionBase	PyExc_StandardError
-#define	Py23_Int_AsLong		PyInt_AsLong
-#define	Py23_Int_Check		PyInt_Check
-#define Py23_Int_FromLong	PyInt_FromLong
-#define	Py23_String_AsString	PyString_AsString
-#define	Py23_String_Check	PyString_Check
-#define Py23_String_FromString	PyString_FromString
-#define	Py23_String_FromStringAndSize PyString_FromStringAndSize
-#define	Py23_String_GET_SIZE	PyString_GET_SIZE
-#define	Py23_String_Parse_Char	"S"
-#define	Py23_String_Size	PyString_Size
-#define	Py23_String_Type	PyString_Type
-#define	Py23_TYPE(p)		((p)->ob_type)
-#else
-#define	Py23_ExceptionBase	PyExc_Exception
-#define	Py23_Int_AsLong		PyLong_AsLong
-#define	Py23_Int_Check		PyLong_Check
-#define Py23_Int_FromLong	PyLong_FromLong
-#define	Py23_String_AsString	PyUnicode_AsUTF8
-#define	Py23_String_Check	PyUnicode_Check
-#define Py23_String_FromString	PyUnicode_FromString
-#define	Py23_String_FromStringAndSize PyUnicode_FromStringAndSize
-#define	Py23_String_GET_SIZE	PyUnicode_GET_SIZE
-#define	Py23_String_Parse_Char	"U"
-#define	Py23_String_Size	PyUnicode_Size
-#define	Py23_String_Type	PyUnicode_Type
-#define	Py23_TYPE(p)		Py_TYPE(p)
-#endif
-#define	Py23_Stringify(x)	#x
-
-/*
  * The python interpreter's shared library.
  */
 static char libpython_so[]	= LIBPYTHON_SO;
@@ -120,33 +79,20 @@ static char libpython_so[]	= LIBPYTHON_SO;
  */
 static void initialise_python(void)
 {
-#if	PY_MAJOR_VERSION*100 + PY_MINOR_VERSION >= 204
-  Py_DontWriteBytecodeFlag = 1;
-  Py_IgnoreEnvironmentFlag = 1;	/* Required to mitigate CVE-2019-16729 */
-  Py_NoUserSiteDirectory = 1;	/* Required to mitigate CVE-2019-16729 */
-#if PY_VERSION_HEX >= 0x03000000
-  Py_IsolatedFlag = 1;
-#endif
-  /* Py_NoSiteFlag = 1; 	Breaks too many things */
-  Py_InitializeEx(0);
-#else
-  size_t		signum;
-  struct sigaction	oldsigaction[NSIG];
+  PyConfig config;
+  PyConfig_InitIsolatedConfig(&config);
 
-  for (signum = 0; signum < arr_size(oldsigaction); signum += 1)
-    sigaction(signum, 0, &oldsigaction[signum]);
-  Py_Initialize();
-  for (signum = 0; signum < arr_size(oldsigaction); signum += 1)
-    sigaction(signum, &oldsigaction[signum], 0);
-#endif
-}
+  config.write_bytecode = 0;
+  config.use_environment = 0;
+  config.user_site_directory = 0;
+  config.isolated = 1;
+  // config.site_import = 1; // Do not set this to 0, breaks too many things
 
-/*
- * The Py_XDECREF macro gives warnings.  This function doesn't.
- */
-static void py_xdecref(PyObject* object)
-{
-  Py_XDECREF(object);
+  PyStatus status = Py_InitializeFromConfig(&config);
+  PyConfig_Clear(&config);
+  if (PyStatus_Exception(status)) {
+      Py_ExitStatusException(status);
+  }
 }
 
 /*
@@ -160,7 +106,7 @@ static int generic_traverse(PyObject* self, visitproc visitor, void* arg)
   int			py_result;
   PyObject**		slot;
 
-  member = Py23_TYPE(self)->tp_members;
+  member = Py_TYPE(self)->tp_members;
   if (member == 0)
     return 0;
   /*
@@ -205,7 +151,7 @@ static int generic_clear(PyObject* self)
   PyMemberDef*		member;
   int			member_visible;
 
-  member = Py23_TYPE(self)->tp_members;
+  member = Py_TYPE(self)->tp_members;
   if (member == 0)
     return 0;
   /*
@@ -229,7 +175,7 @@ static int generic_clear(PyObject* self)
  */
 static void generic_dealloc(PyObject* self)
 {
-  PyTypeObject*		type = Py23_TYPE(self);
+  PyTypeObject*		type = Py_TYPE(self);
 
   if (PyObject_IS_GC(self))
     PyObject_GC_UnTrack(self);
@@ -398,18 +344,12 @@ static int syslog_python2pam(PyObject* exception_type)
  */
 static char* alloc_module_path(PamHandleObject* pamHandle)
 {
-#if PY_VERSION_HEX < 0x03000000
-  char* result = PyModule_GetFilename(pamHandle->module);
-  if (result != 0)
-    return strdup(result);
-#else
   PyObject* tmp = PyModule_GetFilenameObject(pamHandle->module);
   if (tmp != 0) {
-    char* result = strdup(Py23_String_AsString(tmp));
+    char* result = strdup(PyUnicode_AsUTF8(tmp));
     Py_DECREF(tmp);
     return result;
   }
-#endif
   return strdup(MODULE_NAME);
 }
 
@@ -424,7 +364,6 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
   PyObject*	ptraceback = 0;
   PyObject*	pvalue = 0;
   int		pam_result = 0;
-  PyObject*	stype = 0;
   const char*	str_name = 0;
   const char*	str_message = 0;
 
@@ -434,24 +373,18 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
    * Just print the exception in some recognisable form, hopefully.
    */
   syslog_open(module_path);
-  if (PyClass_Check(ptype))
-    stype = PyObject_GetAttrString(ptype, "__name__");
-  else
+  if (ptype != 0)
   {
-    stype = ptype;
-    Py_INCREF(stype);
-  }
-  if (stype != 0)
-  {
-    name = PyObject_Str(stype);
+    Py_INCREF(ptype);
+    name = PyObject_Str(ptype);
     if (name != 0)
-      str_name = Py23_String_AsString(name);
+      str_name = PyUnicode_AsUTF8(name);
   }
   if (pvalue != 0)
   {
     message = PyObject_Str(pvalue);
     if (message != 0)
-      str_message = Py23_String_AsString(message);
+      str_message = PyUnicode_AsUTF8(message);
   }
   if (errormsg != 0 && str_name != 0 && str_message != 0)
   {
@@ -472,12 +405,11 @@ static int syslog_path_exception(const char* module_path, const char* errormsg)
   else if (str_message != 0)
     syslog(LOG_AUTHPRIV|LOG_ERR, "%s", str_message);
   pam_result = syslog_python2pam(ptype);
-  py_xdecref(message);
-  py_xdecref(name);
-  py_xdecref(ptraceback);
-  py_xdecref(ptype);
-  py_xdecref(pvalue);
-  py_xdecref(stype);
+  Py_XDECREF(message);
+  Py_XDECREF(name);
+  Py_XDECREF(ptraceback);
+  Py_XDECREF(ptype);
+  Py_XDECREF(pvalue);
   syslog_close();
   return pam_result;
 }
@@ -578,16 +510,16 @@ static int syslog_path_traceback(
       "OOOOO", ptype, pvalue, ptraceback, Py_None, pamHandle->syslogFile);
   if (args != 0)
   {
-    py_resultobj = PyEval_CallObject(pamHandle->print_exception, args);
+    py_resultobj = PyObject_CallObject(pamHandle->print_exception, args);
     if (py_resultobj != 0)
       SyslogFile_flush(pamHandle->syslogFile);
   }
   pam_result = syslog_python2pam(ptype);
-  py_xdecref(args);
-  py_xdecref(ptraceback);
-  py_xdecref(ptype);
-  py_xdecref(pvalue);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(args);
+  Py_XDECREF(ptraceback);
+  Py_XDECREF(ptype);
+  Py_XDECREF(pvalue);
+  Py_XDECREF(py_resultobj);
   syslog_close();
   return pam_result;
 }
@@ -654,7 +586,7 @@ static PyObject* PamMessage_new(
 
   err = PyArg_ParseTupleAndKeywords(
       args, kwds, "iO!:Message", kwlist,
-      &msg_style, &Py23_String_Type, &msg);
+      &msg_style, &PyUnicode_Type, &msg);
   if (!err)
     goto error_exit;
   pamMessage = (PamMessageObject*)type->tp_alloc(type, 0);
@@ -667,7 +599,7 @@ static PyObject* PamMessage_new(
   pamMessage = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamMessage);
+  Py_XDECREF((PyObject*)pamMessage);
   return self;
 }
 
@@ -724,7 +656,7 @@ static PyObject* PamResponse_new(
       &resp, &resp_retcode);
   if (!err)
     goto error_exit;
-  if (resp != Py_None && !Py23_String_Check(resp))
+  if (resp != Py_None && !PyUnicode_Check(resp))
   {
     PyErr_SetString(PyExc_TypeError, "resp must be a string or None");
     goto error_exit;
@@ -739,7 +671,7 @@ static PyObject* PamResponse_new(
   pamResponse = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamResponse);
+  Py_XDECREF((PyObject*)pamResponse);
   return self;
 }
 
@@ -791,7 +723,7 @@ static PyObject* PamXAuthData_new(
   static char*		kwlist[] = {"name", "data", 0};
 
   err = PyArg_ParseTupleAndKeywords(
-      args, kwds, Py23_String_Parse_Char Py23_String_Parse_Char ":XAuthData", kwlist,
+      args, kwds, "UU:XAuthData", kwlist,
       &name, &data);
   if (!err)
     goto error_exit;
@@ -806,7 +738,7 @@ static PyObject* PamXAuthData_new(
   pamXAuthData = 0;
 
 error_exit:
-  py_xdecref((PyObject*)pamXAuthData);
+  Py_XDECREF((PyObject*)pamXAuthData);
   return self;
 }
 
@@ -829,11 +761,11 @@ static int check_pam_result(PamHandleObject* pamHandle, int pam_result)
     PyErr_SetString(pamHandle->exception, error_string);
     PyErr_Fetch(&ptype, &pvalue, &ptraceback);
     PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
-    error_code = Py23_Int_FromLong(pam_result);
+    error_code = PyLong_FromLong(pam_result);
     if (error_code != NULL)
       PyObject_SetAttrString(pvalue, "pam_result", error_code);
     PyErr_Restore(ptype, pvalue, ptraceback);
-    py_xdecref(error_code);
+    Py_XDECREF(error_code);
   }
   return -1;
 }
@@ -852,7 +784,7 @@ static PyObject* PamHandle_get_item(PyObject* self, int item_type)
   if (check_pam_result(pamHandle, pam_result) == -1)
     goto error_exit;
   if (value != 0)
-    result = Py23_String_FromString(value);
+    result = PyUnicode_FromString(value);
   else
   {
     result = Py_None;
@@ -869,14 +801,14 @@ static int PamHandle_set_item(
   PamHandleObject*	pamHandle = (PamHandleObject*)self;
   int			pam_result;
   int			result = -1;
-  char*			value;
+  const char*		value;
   char			error_message[64];
 
   if (pyValue == Py_None)
     value = 0;
   else
   {
-    value = Py23_String_AsString(pyValue);
+    value = PyUnicode_AsUTF8(pyValue);
     if (value == 0)
     {
       snprintf(
@@ -898,8 +830,7 @@ static int PamHandle_set_item(
   result = check_pam_result(pamHandle, pam_result);
 
 error_exit:
-  if (value != 0)
-    free(value);
+  /* Note: value points to internal Python string data and should not be freed */
   return result;
 }
 
@@ -970,7 +901,7 @@ static PyObject* PamEnvIter_create(
   Py_INCREF(result);
 
 error_exit:
-  py_xdecref((PyObject*)pamEnvIter);
+  Py_XDECREF((PyObject*)pamEnvIter);
   return result;
 }
 
@@ -1013,8 +944,8 @@ static PyObject* PamEnvIter_key_entry(const char* entry)
 
   equals = strchr(entry, '=');
   if (equals == 0)
-    return Py23_String_FromString(entry);
-  return Py23_String_FromStringAndSize(entry, equals - entry);
+    return PyUnicode_FromString(entry);
+  return PyUnicode_FromStringAndSize(entry, equals - entry);
 }
 
 /*
@@ -1026,8 +957,8 @@ static PyObject* PamEnvIter_value_entry(const char* entry)
 
   equals = strchr(entry, '=');
   if (equals == 0)
-    return Py23_String_FromString("");
-  return Py23_String_FromString(equals + 1);
+    return PyUnicode_FromString("");
+  return PyUnicode_FromString(equals + 1);
 }
 
 /*
@@ -1059,9 +990,9 @@ static PyObject* PamEnvIter_item_entry(const char* entry)
   tuple = 0;
 
 error_exit:
-  py_xdecref(key);
-  py_xdecref(tuple);
-  py_xdecref(value);
+  Py_XDECREF(key);
+  Py_XDECREF(tuple);
+  Py_XDECREF(value);
   return result;
 }
 
@@ -1082,12 +1013,12 @@ static const char* PamEnv_getkey(PyObject* key)
 {
   const char*		result;
 
-  if (!Py23_String_Check(key))
+  if (!PyUnicode_Check(key))
   {
     PyErr_SetString(PyExc_TypeError, "PAM environment key must be a string");
     return 0;
   }
-  result = Py23_String_AsString(key);
+  result = PyUnicode_AsUTF8(key);
   if (*result == '\0')
   {
     PyErr_SetString(
@@ -1139,7 +1070,7 @@ static PyObject* PamEnv_mp_subscript(PyObject* self, PyObject* key)
     PyErr_SetString(PyExc_KeyError, key_str);
     goto error_exit;
   }
-  result = Py23_String_FromString(value);
+  result = PyUnicode_FromString(value);
 
 error_exit:
   return result;
@@ -1163,19 +1094,19 @@ static int PamEnv_mp_assign(PyObject* self, PyObject* key, PyObject* value)
     value_str = (char*)key_str;
   else
   {
-    if (!Py23_String_Check(value))
+    if (!PyUnicode_Check(value))
     {
       PyErr_SetString(
           PyExc_TypeError, "PAM environment value must be a string");
       goto error_exit;
     }
-    value_str = malloc(Py23_String_Size(key) + 1 + Py23_String_Size(value) + 1);
+    value_str = malloc(PyUnicode_GetLength(key) + 1 + PyUnicode_GetLength(value) + 1);
     if (value_str == 0)
     {
       PyErr_NoMemory();
       goto error_exit;
     }
-    strcat(strcat(strcpy(value_str, key_str), "="), Py23_String_AsString(value));
+    strcat(strcat(strcpy(value_str, key_str), "="), PyUnicode_AsUTF8(value));
   }
   pam_result = pam_putenv(pamEnv->pamHandle->pamh, value_str);
   if (pam_result != PAM_SUCCESS) // PAM_BAD_ITEM in Linux = PAM_BUF_ERR,PAM_SYSTEM_ERR
@@ -1272,7 +1203,7 @@ static PyObject* PamEnv_get(
     goto error_exit;
   value_str = pam_getenv(pamEnv->pamHandle->pamh, key_str);
   if (value_str != 0)
-    result = Py23_String_FromString(value_str);
+    result = PyUnicode_FromString(value_str);
   else
   {
     result = default_value != 0 ? default_value : Py_None;
@@ -1321,8 +1252,8 @@ static PyObject* PamEnv_as_sequence(
   list = 0;
 
 error_exit:
-  py_xdecref(list);
-  py_xdecref(entry);
+  Py_XDECREF(list);
+  Py_XDECREF(entry);
   return result;
 }
 
@@ -1604,7 +1535,7 @@ static PyObject* PamHandle_get_XAUTHDATA(PyObject* self, void* closure)
   }
 
 error_exit:
-  py_xdecref(newargs);
+  Py_XDECREF(newargs);
   return result;
 }
 
@@ -1629,7 +1560,7 @@ static int PamHandle_set_XAUTHDATA(
   name = PyObject_GetAttrString(pyValue, "name");
   if (name == 0)
     goto error_exit;
-  name_str = Py23_String_AsString(name);
+  name_str = PyUnicode_AsUTF8(name);
   if (name_str == 0)
   {
     PyErr_SetString(PyExc_TypeError, "xauthdata.name must be a string");
@@ -1641,14 +1572,14 @@ static int PamHandle_set_XAUTHDATA(
     PyErr_NoMemory();
     goto error_exit;
   }
-  xauth_data.namelen = Py23_String_GET_SIZE(name);
+  xauth_data.namelen = PyUnicode_GetLength(name);
   /*
    * Get the data.
    */
   data = PyObject_GetAttrString(pyValue, "data");
   if (data == 0)
     goto error_exit;
-  data_str = Py23_String_AsString(data);
+  data_str = PyUnicode_AsUTF8(data);
   if (data_str == 0)
   {
     PyErr_SetString(PyExc_TypeError, "xauthdata.data must be a string");
@@ -1660,7 +1591,7 @@ static int PamHandle_set_XAUTHDATA(
     PyErr_NoMemory();
     goto error_exit;
   }
-  xauth_data.datalen = Py23_String_GET_SIZE(data);
+  xauth_data.datalen = PyUnicode_GetLength(data);
   /*
    * Set the item.  If that worked PAM will have swallowed the strings inside
    * of it, so we must not free them.
@@ -1674,8 +1605,8 @@ static int PamHandle_set_XAUTHDATA(
   result = check_pam_result(pamHandle, pam_result);
 
 error_exit:
-  py_xdecref(data);
-  py_xdecref(name);
+  Py_XDECREF(data);
+  Py_XDECREF(name);
   if (xauth_data.name != 0)
     free(xauth_data.name);
   if (xauth_data.data != 0)
@@ -1822,16 +1753,16 @@ static int PamHandle_conversation_2message(
   msg_style = PyObject_GetAttrString(object, "msg_style");
   if (msg_style == 0)
     goto error_exit;
-  if (!Py23_Int_Check(msg_style) && !PyLong_Check(msg_style))
+  if (!PyLong_Check(msg_style))
   {
     PyErr_SetString(PyExc_TypeError, "message.msg_style must be an int");
     goto error_exit;
   }
-  message->msg_style = Py23_Int_AsLong(msg_style);
+  message->msg_style = PyLong_AsLong(msg_style);
   msg = PyObject_GetAttrString(object, "msg");
   if (msg == 0)
     goto error_exit;
-  message->msg = Py23_String_AsString(msg);
+  message->msg = PyUnicode_AsUTF8(msg);
   if (message->msg == 0)
   {
     PyErr_SetString(PyExc_TypeError, "message.msg must be a string");
@@ -1840,8 +1771,8 @@ static int PamHandle_conversation_2message(
   result = 0;
 
 error_exit:
-  py_xdecref(msg);
-  py_xdecref(msg_style);
+  Py_XDECREF(msg);
+  Py_XDECREF(msg_style);
   return result;
 }
 
@@ -1862,7 +1793,7 @@ static PyObject* PamHandle_conversation_2response(
     goto error_exit;
 
 error_exit:
-  py_xdecref(newargs);
+  Py_XDECREF(newargs);
   return result;
 }
 
@@ -1970,8 +1901,8 @@ static PyObject* PamHandle_conversation(
   }
 
 error_exit:
-  py_xdecref(response);
-  py_xdecref(result_tuple);
+  Py_XDECREF(response);
+  Py_XDECREF(result_tuple);
   PyMem_Free(message_array);
   PyMem_Free(message_vector);
   if (response_array != 0)
@@ -2032,7 +1963,7 @@ static PyObject* PamHandle_get_user(
   if (check_pam_result(pamHandle, pam_result) == -1)
     goto error_exit;
   if (user != 0)
-    result = Py23_String_FromString(user);
+    result = PyUnicode_FromString(user);
   else
   {
     result = Py_None;
@@ -2076,7 +2007,7 @@ static PyObject* PamHandle_strerror(
   }
   else
   {
-    result = Py23_String_FromString(err);
+    result = PyUnicode_FromString(err);
     if (result == 0)
       goto error_exit;
   }
@@ -2210,6 +2141,7 @@ static int	pypam_initialize_count = 0;
 
 static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
 {
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PamHandleObject*	pamHandle = (PamHandleObject*)data;
   void*			dlhandle = pamHandle->dlhandle;
   PyObject*		py_resultobj = 0;
@@ -2229,10 +2161,11 @@ static void cleanup_pamHandle(pam_handle_t* pamh, void* data, int error_status)
         &py_resultobj, pamHandle, handler_function,
 	handler_name, 0, 0, 0);
   }
-  py_xdecref(py_resultobj);
-  py_xdecref(handler_function);
+  Py_XDECREF(py_resultobj);
+  Py_XDECREF(handler_function);
   py_initialized = pamHandle->py_initialized;
   Py_DECREF(pamHandle);
+  PyGILState_Release(gstate);
   if (py_initialized)
   {
     pypam_initialize_count -= 1;
@@ -2340,13 +2273,13 @@ static int load_user_module(
   pam_result = PAM_SUCCESS;
 
 error_exit:
-  py_xdecref(builtins);
-  py_xdecref(module_dict);
+  Py_XDECREF(builtins);
+  Py_XDECREF(module_dict);
   if (module_fp != 0)
     fclose(module_fp);
   if (user_module_name != 0)
     free(user_module_name);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
@@ -2370,7 +2303,7 @@ static PyTypeObject* newHeapType(
   PyTypeObject*		result = 0;
   PyTypeObject*		type = 0;
 
-  pyName = Py23_String_FromString(name);
+  pyName = PyUnicode_FromString(name);
   if (pyName == 0)
     goto error_exit;
   type = (PyTypeObject*)PyType_Type.tp_alloc(&PyType_Type, 0);
@@ -2395,7 +2328,7 @@ static PyTypeObject* newHeapType(
   type->tp_methods = methods;
   type->tp_members = members;
   type->tp_getset = getset;
-  type->tp_name = Py23_String_AsString(pyName);
+  type->tp_name = PyUnicode_AsUTF8(pyName);
 #if PY_VERSION_HEX < 0x02050000
   ((PyHeapTypeObject*)type)->name = pyName;
 #else
@@ -2410,8 +2343,8 @@ static PyTypeObject* newHeapType(
   type = 0;
 
 error_exit:
-  py_xdecref(pyName);
-  py_xdecref((PyObject*)type);
+  Py_XDECREF(pyName);
+  Py_XDECREF((PyObject*)type);
   return result;
 }
 
@@ -2437,7 +2370,7 @@ static PyObject* newSingletonObject(
       module, name, basicsize, doc, clear, methods, members, getset, 0);
   if (type != 0)
     result = type->tp_alloc(type, 0);
-  py_xdecref((PyObject*)type);
+  Py_XDECREF((PyObject*)type);
   return result;
 }
 
@@ -2469,7 +2402,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "python module name not supplied");
     pam_result = PAM_MODULE_UNKNOWN;
-    goto error_exit;
+    goto no_lock_exit;
   }
   if (argv[0][0] == '/')
     module_dir = "";
@@ -2480,7 +2413,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "out of memory");
     pam_result = PAM_BUF_ERR;
-    goto error_exit;
+    goto no_lock_exit;
   }
   strcat(strcpy(module_path, module_dir), argv[0]);
   /*
@@ -2491,7 +2424,7 @@ static int get_pamHandle(
   {
     syslog_path_message(MODULE_NAME, "out of memory");
     pam_result = PAM_BUF_ERR;
-    goto error_exit;
+    goto no_lock_exit;
   }
   strcat(strcat(strcpy(module_data_name, MODULE_NAME), "."), module_path);
   pam_result = pam_get_data(pamh, module_data_name, (void*)result);
@@ -2499,7 +2432,7 @@ static int get_pamHandle(
   {
     (*result)->pamh = pamh;
     Py_INCREF(*result);
-    goto error_exit;
+    goto no_lock_exit;
   }
   /*
    * Initialize Python if required.
@@ -2510,7 +2443,7 @@ static int get_pamHandle(
     pam_result = syslog_path_message(
         module_path,
 	"Can't load python library %s: %s", libpython_so, dlerror());
-    goto error_exit;
+    goto no_lock_exit;
   }
   do_initialize = pypam_initialize_count > 0 || !Py_IsInitialized();
   if (do_initialize)
@@ -2519,6 +2452,7 @@ static int get_pamHandle(
       initialise_python();
     pypam_initialize_count += 1;
   }
+  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * Create a throw away module because heap types need one, apparently.
    */
@@ -2556,7 +2490,7 @@ static int get_pamHandle(
   pamHandle->pamh = pamh;
   pamHandle->py_initialized = do_initialize;
   pamHandle->exception = PyErr_NewException(
-    PAMHANDLE_NAME "." PAMHANDLEEXCEPTION_NAME, Py23_ExceptionBase, NULL);
+    PAMHANDLE_NAME "." PAMHANDLEEXCEPTION_NAME, PyExc_Exception, NULL);
   if (pamHandle->exception == NULL)
     goto error_exit;
   /*
@@ -2576,8 +2510,8 @@ static int get_pamHandle(
     pam_result = syslog_path_exception(module_path, "Can't create pamh.env");
     goto error_exit;
   }
-  Py23_TYPE(pamEnv)->tp_as_mapping = &PamEnv_as_mapping;
-  Py23_TYPE(pamEnv)->tp_iter = PamEnv_iter;
+  Py_TYPE(pamEnv)->tp_as_mapping = &PamEnv_as_mapping;
+  Py_TYPE(pamEnv)->tp_iter = PamEnv_iter;
   pamEnv->pamHandle = pamHandle;
   pamEnv->pamEnvIter_type = newHeapType(
       pamHandle_module,			/* __module__ */
@@ -2721,16 +2655,18 @@ static int get_pamHandle(
   pamHandle = 0;
 
 error_exit:
+  PyGILState_Release(gstate);
+no_lock_exit:
   if (module_path != 0)
     free(module_path);
   if (module_data_name != 0)
     free(module_data_name);
-  py_xdecref(user_module);
-  py_xdecref((PyObject*)pamEnv);
-  py_xdecref((PyObject*)pamHandle);
-  py_xdecref(pamHandle_module);
-  py_xdecref((PyObject*)syslogFile);
-  py_xdecref(tracebackModule);
+  Py_XDECREF(user_module);
+  Py_XDECREF((PyObject*)pamEnv);
+  Py_XDECREF((PyObject*)pamHandle);
+  Py_XDECREF(pamHandle_module);
+  Py_XDECREF((PyObject*)syslogFile);
+  Py_XDECREF(tracebackModule);
   return pam_result;
 }
 
@@ -2764,10 +2700,10 @@ static int call_python_handler(
     handler_args = Py_BuildValue("(O)", pamHandle);
   else
   {
-    flags_object = Py23_Int_FromLong(flags);
+    flags_object = PyLong_FromLong(flags);
     if (flags_object == 0)
     {
-      pam_result = syslog_exception(pamHandle, Py23_Stringify(Py23_Int_FromLong) "(flags) failed");
+      pam_result = syslog_exception(pamHandle, "PyLong_FromLong(flags) failed");
       goto error_exit;
     }
     argv_object = PyList_New(argc);
@@ -2778,12 +2714,12 @@ static int call_python_handler(
     }
     for (i = 0; i < argc; i += 1)
     {
-      arg_object = Py23_String_FromString(argv[i]);
+      arg_object = PyUnicode_FromString(argv[i]);
       if (arg_object == 0)
       {
 	pam_result = syslog_exception(
 	    pamHandle,
-	    Py23_Stringify(Py23_String_FromString) "(argv[i]) failed");
+	    "PyUnicode_FromString(argv[i]) failed");
 	goto error_exit;
       }
       PyList_SET_ITEM(argv_object, i, arg_object);
@@ -2802,7 +2738,7 @@ static int call_python_handler(
   /*
    * Call the Python handler function.
    */
-  py_resultobj = PyEval_CallObject(handler_function, handler_args);
+  py_resultobj = PyObject_CallObject(handler_function, handler_args);
   /*
    * Did it throw an exception?
    */
@@ -2816,11 +2752,11 @@ static int call_python_handler(
   pam_result = PAM_SUCCESS;
 
 error_exit:
-  py_xdecref(arg_object);
-  py_xdecref(argv_object);
-  py_xdecref(flags_object);
-  py_xdecref(handler_args);
-  py_xdecref(py_resultobj);
+  Py_XDECREF(arg_object);
+  Py_XDECREF(argv_object);
+  Py_XDECREF(flags_object);
+  Py_XDECREF(handler_args);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
@@ -2841,7 +2777,8 @@ static int call_handler(
    */
   pam_result = get_pamHandle(&pamHandle, pamh, argv);
   if (pam_result != PAM_SUCCESS)
-    goto error_exit;
+    goto no_lock_exit;
+  PyGILState_STATE gstate = PyGILState_Ensure();
   /*
    * See if the function we have to call has been defined.
    */
@@ -2861,19 +2798,20 @@ static int call_handler(
   /*
    * It must return an integer.
    */
-  if (!Py23_Int_Check(py_resultobj) && !PyLong_Check(py_resultobj))
+  if (!PyLong_Check(py_resultobj))
   {
     pam_result = syslog_message(
 	pamHandle,
 	"%s() did not return an integer.", handler_name);
     goto error_exit;
   }
-  pam_result = Py23_Int_AsLong(py_resultobj);
-
+  pam_result = PyLong_AsLong(py_resultobj);
 error_exit:
-  py_xdecref(handler_function);
-  py_xdecref((PyObject*)pamHandle);
-  py_xdecref(py_resultobj);
+  PyGILState_Release(gstate);
+no_lock_exit:
+  Py_XDECREF(handler_function);
+  Py_XDECREF((PyObject*)pamHandle);
+  Py_XDECREF(py_resultobj);
   return pam_result;
 }
 
