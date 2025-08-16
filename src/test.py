@@ -8,11 +8,12 @@
 #   python test.py
 #   sudo rm /etc/pam.d/test-pam_python.pam 
 #
-from ctypes import CDLL, POINTER, cast, byref, sizeof, c_char_p, c_char, c_int, memmove
+from ctypes import CDLL, POINTER, cast, byref, sizeof, c_char_p, c_char, c_int, memmove, cdll
 from ctypes.util import find_library
 
 import os
 import sys
+import pam.__internals as pam_internals
 
 # Python 3 only - simplify compatibility code
 py23_base_exception = BaseException
@@ -78,8 +79,6 @@ def test_basic_calls(results, who, pamh, flags, argv):
   results.append((py23_function_name(who), flags, argv))
   return pamh.PAM_SUCCESS
   
-import pam.__internals as pam_internals
-
 class LibPAM(pam_internals.PamAuthenticator):
     def __init__(self):
         super().__init__()
@@ -118,10 +117,9 @@ class LibPAM(pam_internals.PamAuthenticator):
     def end(self):
         return self.pam_end(self.ph, 0)
 
+libc = cdll.LoadLibrary(None)
 @pam_internals.conv_func
 def pam_conv(n_messages, messages, p_response, app_data):
-    from ctypes import cdll
-    libc = cdll.LoadLibrary(None)
     """echo"""
     # Create an array of n_messages response objects
     addr = libc.calloc(n_messages, sizeof(pam_internals.PamResponse))
