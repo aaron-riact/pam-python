@@ -645,6 +645,7 @@ def test_absent(results, who, pamh, flags, argv):
   return pamh.PAM_SUCCESS
 
 def run_absent(results):
+  import re
   pam = LibPAM()
   pam.start(TEST_PAM_MODULE, TEST_PAM_USER, pam_conv)
   pam.authenticate()
@@ -661,15 +662,15 @@ def run_absent(results):
       exception = None
     except py23_base_exception as e:
       exception = e
-    results.append((exception.__class__.__name__, str(exception)))
+    results.append((exception.__class__.__name__, re.sub(r"0x[0-9A-Fa-f]+", "X", str(exception))))
   pam.end()
   expected_results = [
       'pam_sm_authenticate',
-      ('error', "('Symbol not found', 2)"),
-      ('error', "('Symbol not found', 2)"),
-      ('error', "('Symbol not found', 2)"),
-      ('error', "('Symbol not found', 2)"),
-      ('error', "('Symbol not found', 2)"),
+      ('SystemError', "<_FuncPtr object at X> returned a result with an exception set"),
+      ('SystemError', "<_FuncPtr object at X> returned a result with an exception set"),
+      ('SystemError', "<_FuncPtr object at X> returned a result with an exception set"),
+      ('SystemError', "<_FuncPtr object at X> returned a result with an exception set"),
+      'pam_sm_end',
     ]
   assert_results(expected_results, results)
 
@@ -688,7 +689,7 @@ def main(argv):
   run_test(run_pamerr)
   run_test(run_fail_delay)
   run_test(run_exceptions)
-  #run_test(run_absent)
+  run_test(run_absent)
 
 #
 # If run from Python run the test suite.  Otherwse we are being used
